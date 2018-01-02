@@ -54,6 +54,7 @@ RUN apk --no-cache --update-cache update \
     && apk --no-cache --update-cache upgrade \
     && apk --no-cache --update-cache add \
         bash \
+        git \
         ca-certificates \
         gcc \
         py3-libxml2 \
