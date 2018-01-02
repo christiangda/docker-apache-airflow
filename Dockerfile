@@ -9,7 +9,12 @@ ENV AIRFLOW_VERSION=${AIRFLOW_VERSION:-1.8.0} \
     AIRFLOW_USER="airflow" \
     AIRFLOW_GROUP="airflow" \
     AIRFLOW_HOME="/airflow" \
-    AIRFLOW_PORT=8080
+    LANGUAGE=en_US.UTF-8 \
+    LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
+    LC_CTYPE=en_US.UTF-8 \
+    LC_MESSAGES=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8
 
 # Container's Labels
 LABEL maintainer="Christian González Di Antonio <christiangda@gmail.com>" \
@@ -29,12 +34,13 @@ LABEL Build="docker build --no-cache --rm \
             --tag christiangda/apache-airflow:3.6.4-1.8.0-alpine \
             --tag christiangda/apache-airflow:1.8.0-alpine \
             --tag christiangda/apache-airflow:latest ." \
-    Run="docker run --tty --interactive --rm --name \"airflow-01\" christiangda/apache-airflow" \
+    Run="docker run --tty --interactive --rm --name \"airflow-01\" -p 8080:8080 christiangda/apache-airflow" \
     Connect="docker exec --tty --interactive <container id from 'doclogsker ps' command> bash"
 
 # Create service's user
 RUN addgroup -g 1000 ${AIRFLOW_GROUP} \
     && mkdir -p ${AIRFLOW_HOME} \
+    && mkdir -p "${AIRFLOW_HOME}/dags" \
     && adduser -u 1000 -S -D -G ${AIRFLOW_GROUP} -h ${AIRFLOW_HOME} -s /sbin/nologin -g "Apache Airflow" ${AIRFLOW_USER} \
     && chmod 755 ${AIRFLOW_HOME} \
     && chown -R ${AIRFLOW_USER}.${AIRFLOW_GROUP} ${AIRFLOW_HOME}
@@ -63,26 +69,34 @@ RUN apk --no-cache --update-cache update \
         postgresql-dev \
         libffi-dev \
         freetds-dev \
+        musl-dev \
     && ln -s /usr/include/locale.h /usr/include/xlocale.h
 
 # Fix problem with freetds-dev and pymssql
 RUN echo "#define DBVERSION_80 DBVERSION_71" >>  /usr/include/sybdb.h \
-    && pip install pymssql --upgrade
+    && pip install \
+        pymssql \
+        setuptools \
+        wheel \
+        celery[redis] \
+        cryptography
 
 # Install Apache Airflow and its plugins
 RUN pip install \
         Cython \
         airflow==${AIRFLOW_VERSION} \
         airflow[all] \
-    && rm -rf /tmp/* /var/tmp/* /var/cache/apk/* /root/.cache
+    && apk del build-base linux-headers \
+    && rm -rf /tmp/* /var/tmp/* /var/cache/apk/* /root/.cache \
+    && chown -R ${AIRFLOW_USER}.${AIRFLOW_GROUP} ${AIRFLOW_HOME}
 
 # Exposed ports
-EXPOSE ${AIRFLOW_PORT}
+EXPOSE 8080 5555 8793
 
 VOLUME ${AIRFLOW_HOME}
 
-# USER ${AIRFLOW_USER}
-# WORKDIR ${AIRFLOW_HOME}
+USER ${AIRFLOW_USER}
+WORKDIR ${AIRFLOW_HOME}
 
 # Force any command provision the container
 #ENTRYPOINT ["provisioning/docker-entrypoint.sh"]
