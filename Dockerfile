@@ -11,7 +11,11 @@ ARG AIRFLOW_VERSION
 ENV AIRFLOW_VERSION=${AIRFLOW_VERSION:-1.8.2} \
     AIRFLOW_USER="airflow" \
     AIRFLOW_GROUP="airflow" \
-    AIRFLOW_HOME="/apache-airflow" \
+    AIRFLOW_HOME="/airflow" \
+    AIRFLOW_DAGS_PATH="/airflow/dags" \
+    AIRFLOW_LOGS_PATH="/airflow/logs" \
+    AIRFLOW_PLUGINS_PATH="/airflow/plugins" \
+    AIRFLOW_TMP_PATH="/tmp" \
     LANGUAGE=en_US.UTF-8 \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
@@ -36,7 +40,6 @@ LABEL Build="docker build --no-cache --rm \
             --build-arg PYTHON_VERSION=3.6.4 \
             --build-arg AIRFLOW_VERSION=1.8.2 \
             --build-arg ALPINE_VERSION=3.7 \
-            --tag christiangda/apache-airflow:3.6.4-1.8.2-alpine \
             --tag christiangda/apache-airflow:1.8.2-alpine \
             --tag christiangda/apache-airflow:1.8.2 \
             --tag christiangda/apache-airflow:latest ." \
@@ -44,11 +47,13 @@ LABEL Build="docker build --no-cache --rm \
     Connect="docker exec --tty --interactive <container id from 'doclogsker ps' command> bash"
 
 # Service user
-RUN addgroup -g 1000 ${AIRFLOW_GROUP} \
-    && mkdir -p ${AIRFLOW_HOME} \
-    && mkdir -p "${AIRFLOW_HOME}/dags" \
+RUN mkdir -p ${AIRFLOW_HOME} \
+    && mkdir -p ${AIRFLOW_DAGS_PATH} \
+    && mkdir -p ${AIRFLOW_LOGS_PATH} \
+    && mkdir -p ${AIRFLOW_PLUGINS_PATH} \
+    && addgroup -g 1000 ${AIRFLOW_GROUP} \
     && adduser -u 1000 -S -D -G ${AIRFLOW_GROUP} -h ${AIRFLOW_HOME} -s /sbin/nologin -g "Apache Airflow" ${AIRFLOW_USER} \
-    && chmod 755 ${AIRFLOW_HOME} \
+    && chmod -R 755 ${AIRFLOW_HOME} \
     && chown -R ${AIRFLOW_USER}.${AIRFLOW_GROUP} ${AIRFLOW_HOME}
 
 # Copy provisioning files
@@ -80,12 +85,18 @@ RUN apk --no-cache --update-cache update \
     && ln -s /usr/include/locale.h /usr/include/xlocale.h
 
 # Apache Airflow and its plugins
+# Excluded celery[librabbitmq] --> https://github.com/celery/librabbitmq/issues/13
 RUN pip install \
         Cython \
-        celery[librabbitmq,redis,auth,msgpack] \
+        celery[redis,auth,msgpack] \
         cryptography \        
         apache-airflow==${AIRFLOW_VERSION} \
         apache-airflow[all] \
+        flask_bcrypt \
+        Flask-MySQLdb \
+        Flask-Psycopg2 \
+        psycopg2 \
+        configparser \
     && apk del \
         build-base \
         linux-headers \
@@ -93,9 +104,9 @@ RUN pip install \
     && chown -R ${AIRFLOW_USER}.${AIRFLOW_GROUP} ${AIRFLOW_HOME}
 
 # Exposed ports
-EXPOSE 8080 5555 8793
+EXPOSE 8080 8793
 
-VOLUME ${AIRFLOW_HOME}
+VOLUME ${AIRFLOW_HOME} ${AIRFLOW_TMP_PATH} ${AIRFLOW_DAGS_PATH} ${AIRFLOW_LOGS_PATH} ${AIRFLOW_PLUGINS_PATH}
 
 USER ${AIRFLOW_USER}
 WORKDIR ${AIRFLOW_HOME}
